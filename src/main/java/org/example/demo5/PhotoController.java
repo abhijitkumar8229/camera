@@ -1,6 +1,6 @@
-
 package org.example.demo5;
 
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -8,9 +8,13 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.security.MessageDigest;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 @RestController
 @RequestMapping("/api/photos")
@@ -55,9 +59,53 @@ public class PhotoController {
             );
 
         } catch (IOException e) {
-            return ResponseEntity.status(
-                    HttpStatus.INTERNAL_SERVER_ERROR
-            ).body(Map.of("message", "Could not save photo"));
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Could not save photo"));
+        }
+    }
+
+    @GetMapping(value = "/latest", produces = MediaType.IMAGE_JPEG_VALUE)
+    public ResponseEntity<byte[]> latestPhoto(
+            @RequestHeader(value = "X-Admin-Key", required = false) String key) {
+
+        String expectedKey = System.getenv("ADMIN_VIEW_KEY");
+
+        if (expectedKey == null || expectedKey.isBlank()
+                || key == null
+                || !MessageDigest.isEqual(
+                expectedKey.getBytes(StandardCharsets.UTF_8),
+                key.getBytes(StandardCharsets.UTF_8))) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        try {
+            if (!Files.isDirectory(uploadDir)) {
+                return ResponseEntity.notFound().build();
+            }
+
+            Path latest;
+            try (Stream<Path> files = Files.list(uploadDir)) {
+                latest = files
+                        .filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString()
+                                .toLowerCase().endsWith(".jpg"))
+                        .max(Comparator.comparingLong(
+                                path -> path.toFile().lastModified()))
+                        .orElse(null);
+            }
+
+            if (latest == null) {
+                return ResponseEntity.notFound().build();
+            }
+
+            return ResponseEntity.ok()
+                    .contentType(MediaType.IMAGE_JPEG)
+                    .header("X-Photo-Name", latest.getFileName().toString())
+                    .cacheControl(CacheControl.noStore())
+                    .body(Files.readAllBytes(latest));
+
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 }

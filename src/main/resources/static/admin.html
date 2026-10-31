@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="hi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Recent Photos</title>
+</head>
+<body>
+<h2>Recent uploaded photo</h2>
+
+<label>
+    Admin password:
+    <input id="adminKey" type="password">
+</label>
+<button id="startButton">Photo dekhna shuru karein</button>
+
+<p id="status">Password daal kar button dabayein.</p>
+<img id="photo" alt="Nayi uploaded photo yahan dikhegi"
+     style="display:none; max-width:100%; height:auto;">
+
+<script>
+    const keyInput = document.getElementById("adminKey");
+    const statusText = document.getElementById("status");
+    const photo = document.getElementById("photo");
+    let adminKey = "";
+    let lastPhotoName = "";
+    let timer;
+
+    async function checkForPhoto() {
+        try {
+            const response = await fetch("/api/photos/latest", {
+                cache: "no-store",
+                headers: { "X-Admin-Key": adminKey }
+            });
+
+            if (response.status === 401) {
+                statusText.textContent = "Password sahi nahi hai.";
+                clearInterval(timer);
+                return;
+            }
+
+            if (response.status === 404) {
+                statusText.textContent = "Abhi koi photo upload nahi hui. Nayi photo ka intezar hai…";
+                return;
+            }
+
+            if (!response.ok) {
+                statusText.textContent = "Photo check nahi ho paayi. Thodi der baad phir koshish hogi.";
+                return;
+            }
+
+            const photoName = response.headers.get("X-Photo-Name") || Date.now().toString();
+            if (photoName !== lastPhotoName) {
+                lastPhotoName = photoName;
+                photo.src = URL.createObjectURL(await response.blob());
+                photo.style.display = "block";
+                statusText.textContent = "Nayi photo mil gayi.";
+            }
+        } catch {
+            statusText.textContent = "Connection nahi ho paaya. Phir koshish kar rahe hain…";
+        }
+    }
+
+    document.getElementById("startButton").addEventListener("click", () => {
+        adminKey = keyInput.value;
+        if (!adminKey) {
+            statusText.textContent = "Admin password daalein.";
+            return;
+        }
+        clearInterval(timer);
+        checkForPhoto();
+        timer = setInterval(checkForPhoto, 3000);
+    });
+</script>
+</body>
+</html>
